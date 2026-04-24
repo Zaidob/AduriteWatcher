@@ -6,20 +6,8 @@
       {
         "source": "**/*.@(js|css)",
         "headers": [
-          {
-            "key": "Cache-Control",
-            "value": "public,max-age=3600"
-          }
+          { "key": "Cache-Control", "value": "public,max-age=3600" }
         ]
-      }
-    ],
-    "rewrites": [
-      {
-        "source": "/socket.io/**",
-        "run": {
-          "serviceId": "adurite-bot",
-          "region": "us-central1"
-        }
       }
     ]
   }
