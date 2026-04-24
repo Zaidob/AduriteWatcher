@@ -30,7 +30,18 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Generate latest.json
+        env:
+          DEBUG_SNAPSHOT: "1"
+          DEBUG_DIR: "_artifacts"
         run: npm run build:snapshot
+
+      - name: Upload debug snapshot (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: adurite-debug
+          path: _artifacts/**
+          if-no-files-found: ignore
 
       - name: Deploy to Firebase Hosting
         env:
