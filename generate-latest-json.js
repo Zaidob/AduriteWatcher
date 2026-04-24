@@ -5,6 +5,9 @@ const { chromium } = require("playwright");
 
 const TARGET_URL = "https://adurite.com/";
 
+const SEARCH_SELECTOR =
+  ".input_input__JVjrL.market_search__AqW_5, [class*=\"market_search__\"][class*=\"input_input__\"], [class*=\"market_search__\"] input, input[placeholder*=\"Search\" i]";
+
 const CARD_SELECTOR =
   ".card_root__U6W9B.card_robloxCard__2ogeP, [class*=\"card_root__\"][class*=\"card_robloxCard__\"]";
 const TITLE_SELECTOR =
@@ -24,7 +27,36 @@ function parsePriceValue(text) {
   return Number.isFinite(n) ? n : Number.NEGATIVE_INFINITY;
 }
 
-async function scrapeOnce(page) {
+async function autoScrollUntilStable(page, { stableRounds = 3, maxRounds = 40 } = {}) {
+  let lastCount = 0;
+  let stable = 0;
+  for (let round = 0; round < maxRounds; round++) {
+    const count = await page.locator(CARD_SELECTOR).count().catch(() => 0);
+    if (count === lastCount) stable++;
+    else stable = 0;
+    if (stable >= stableRounds) return;
+    lastCount = count;
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await page.waitForTimeout(800);
+  }
+}
+
+async function scrapeOnce(page, { query } = {}) {
+  const q = clean(query || "");
+  if (q) {
+    const search = page.locator(SEARCH_SELECTOR).first();
+    await search.waitFor({ state: "visible", timeout: 45000 });
+    await search.fill("");
+    await search.fill(q);
+    await page.waitForTimeout(1200);
+  }
+
+  // load more cards (site often lazy-loads)
+  await autoScrollUntilStable(page, {
+    stableRounds: Number(process.env.SCROLL_STABLE_ROUNDS || 3),
+    maxRounds: Number(process.env.SCROLL_MAX_ROUNDS || 80)
+  });
+
   const items = await page.$$eval(
     CARD_SELECTOR,
     (cards, selectors) => {
@@ -50,11 +82,20 @@ async function scrapeOnce(page) {
           const n = (occ.get(occKey) || 0);
           occ.set(occKey, n + 1);
 
-          return { title, rap, price, rapPriceText, idx, occurrence: n, verified: false };
+          return {
+            title,
+            rap,
+            price,
+            rapPriceText,
+            idx,
+            occurrence: n,
+            verified: false,
+            query: selectors.query || ""
+          };
         })
         .filter((v) => v && v.title);
     },
-    { titleSel: TITLE_SELECTOR, rapPriceSel: RAP_PRICE_SELECTOR }
+    { titleSel: TITLE_SELECTOR, rapPriceSel: RAP_PRICE_SELECTOR, query: q }
   );
 
   items.sort((a, b) => {
@@ -78,15 +119,17 @@ async function main() {
   await page.goto(TARGET_URL, { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(1500);
 
-  const items = await scrapeOnce(page);
+  // Full snapshot: scrape without filtering query.
+  // The website UI will filter locally for whatever the user searches.
+  const all = await scrapeOnce(page);
 
   await browser.close();
 
-  const payload = { generatedAt: new Date().toISOString(), items };
+  const payload = { generatedAt: new Date().toISOString(), items: all };
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
   fs.writeFileSync(outPath, JSON.stringify(payload, null, 2), "utf8");
 
-  process.stdout.write(`Wrote ${items.length} items to ${outPath}\n`);
+  process.stdout.write(`Wrote ${all.length} items to ${outPath}\n`);
 }
 
 main().catch((err) => {
