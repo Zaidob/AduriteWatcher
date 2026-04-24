@@ -231,20 +231,42 @@ async function scrapeOnce(page, { query } = {}) {
 async function main() {
   const outPath = path.resolve(process.env.OUT_PATH || path.join("web", "latest.json"));
   const headful = String(process.env.HEADFUL || "") === "1";
+  const debugDir = path.resolve(process.env.DEBUG_DIR || path.join("web", "_debug"));
 
   const browser = await chromium.launch({ headless: !headful });
   const page = await browser.newPage();
   page.setDefaultTimeout(Number(process.env.TIMEOUT_MS || 45000));
 
+  const writeDebug = async (label) => {
+    if (String(process.env.DEBUG_SNAPSHOT || "") !== "1") return;
+    fs.mkdirSync(debugDir, { recursive: true });
+    const safe = String(label || "debug").replace(/[^\w.-]+/g, "_");
+    const pngPath = path.join(debugDir, `${safe}.png`);
+    const htmlPath = path.join(debugDir, `${safe}.html`);
+    await page.screenshot({ path: pngPath, fullPage: true }).catch(() => {});
+    const html = await page.content().catch(() => "");
+    fs.writeFileSync(htmlPath, html || "", "utf8");
+  };
+
   await page.goto(TARGET_URL, { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(1500);
+  await writeDebug("01_after_goto");
+
   await clickConsentIfPresent(page);
+  await page.waitForTimeout(800);
+  await writeDebug("02_after_consent");
+
   await disableMinimizedViewIfEnabled(page);
   await page.waitForTimeout(800);
+  await writeDebug("03_after_minimized_view");
 
   // Full snapshot: scrape without filtering query.
   // The website UI will filter locally for whatever the user searches.
   const all = await scrapeOnce(page);
+
+  if (String(process.env.DEBUG_SNAPSHOT || "") === "1") {
+    await writeDebug(`04_after_scrape_count_${all.length}`);
+  }
 
   await browser.close();
 
