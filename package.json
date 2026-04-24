@@ -1,0 +1,19 @@
+{
+  "name": "adurite-listings-scraper",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Scrape current Adurite listings and print name + price.",
+  "main": "scrape-adurite.js",
+  "scripts": {
+    "scrape": "node scrape-adurite.js",
+    "build:snapshot": "node generate-latest-json.js",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "node-notifier": "^10.0.1",
+    "playwright": "^1.55.0",
+    "socket.io": "^4.8.1"
+  }
+}
+

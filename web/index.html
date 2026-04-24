@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Adurite Watcher</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="header">
+        <div>
+          <div class="title">Adurite Watcher</div>
+          <div class="subtitle">Auto-updated listings snapshot (static site).</div>
+        </div>
+        <div class="status" id="status">Loading…</div>
+      </header>
+
+      <section class="controls">
+        <div class="field">
+          <label>Items to watch</label>
+          <div class="row">
+            <input id="queryInput" placeholder='e.g. "Beast Mode"' />
+            <button id="addBtn">Add</button>
+          </div>
+          <div class="hint">Exact match only (case-insensitive). Add multiple items.</div>
+          <div class="chips" id="chips"></div>
+        </div>
+
+        <div class="buttons">
+          <button class="primary" id="refreshBtn">Refresh</button>
+          <button id="notifyBtn">Notifications: Off</button>
+        </div>
+      </section>
+
+      <main class="grid" id="grid"></main>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
+

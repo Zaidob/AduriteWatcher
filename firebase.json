@@ -1,0 +1,26 @@
+{
+  "hosting": {
+    "public": "web",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "headers": [
+      {
+        "source": "**/*.@(js|css)",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public,max-age=3600"
+          }
+        ]
+      }
+    ],
+    "rewrites": [
+      {
+        "source": "/socket.io/**",
+        "run": {
+          "serviceId": "adurite-bot",
+          "region": "us-central1"
+        }
+      }
+    ]
+  }
+}
