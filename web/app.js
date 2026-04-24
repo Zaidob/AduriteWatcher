@@ -75,7 +75,8 @@ function rebuildResultsByQueryFromAll() {
   resultsByQuery = new Map([["", all]]);
   for (const q of queries) {
     const nq = normalizeQuery(q);
-    const filtered = all.filter((it) => String(it.title || "").toLowerCase() === nq.toLowerCase());
+    const qn = nq.toLowerCase();
+    const filtered = all.filter((it) => String(it.title || "").toLowerCase().includes(qn));
     resultsByQuery.set(nq, filtered);
   }
 }
