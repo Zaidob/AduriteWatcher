@@ -8,6 +8,9 @@ const TARGET_URL = "https://adurite.com/";
 const SEARCH_SELECTOR =
   ".input_input__JVjrL.market_search__AqW_5, [class*=\"market_search__\"][class*=\"input_input__\"], [class*=\"market_search__\"] input, input[placeholder*=\"Search\" i]";
 
+const MINIMIZED_VIEW_SWITCH_SELECTOR =
+  ".input_input__JVjrL.switcher_root__EjaK8, [class*=\"switcher_root__\"][class*=\"input_input__\"], [class*=\"switcher_root__\"]";
+
 const CARD_SELECTOR =
   ".card_root__U6W9B.card_robloxCard__2ogeP, [class*=\"card_root__\"][class*=\"card_robloxCard__\"]";
 const TITLE_SELECTOR =
@@ -25,6 +28,111 @@ function parsePriceValue(text) {
   const raw = m ? m[2] : s;
   const n = Number(String(raw).replace(/,/g, "").match(/[\d.]+/)?.[0] || NaN);
   return Number.isFinite(n) ? n : Number.NEGATIVE_INFINITY;
+}
+
+async function clickConsentIfPresent(page) {
+  const locators = [
+    page.getByRole("button", { name: /^i\s*agree$/i }).first(),
+    page.getByText(/^i\s*agree$/i, { exact: true }).first(),
+    page.locator("button:has-text(\"I Agree\"), button:has-text(\"I agree\")").first(),
+    page.locator(":is(button,div,span,a)[role=\"button\"]:has-text(\"I Agree\")").first(),
+    page.locator(":is(button,div,span,a):has-text(\"I Agree\")").first()
+  ];
+
+  for (const loc of locators) {
+    try {
+      if (await loc.isVisible({ timeout: 1200 })) {
+        await loc.click({ timeout: 5000, force: true });
+        await page.waitForTimeout(600);
+        return true;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // Last-resort DOM click (some consent modals aren't semantic)
+  try {
+    const clicked = await page.evaluate(() => {
+      const norm = (s) => (s || "").replace(/\s+/g, " ").trim().toLowerCase();
+      const els = Array.from(document.querySelectorAll("button, [role='button'], a, div, span"));
+      const target = els.find((el) => norm(el.textContent) === "i agree");
+      if (!target) return false;
+      target.click();
+      return true;
+    });
+    if (clicked) {
+      await page.waitForTimeout(600);
+      return true;
+    }
+  } catch {
+    // ignore
+  }
+
+  return false;
+}
+
+async function disableMinimizedViewIfEnabled(page) {
+  const tryToggleOff = async (switchLike) => {
+    try {
+      if (!(await switchLike.isVisible({ timeout: 1500 }))) return false;
+    } catch {
+      return false;
+    }
+
+    try {
+      const checked = await switchLike.getAttribute("aria-checked");
+      if (String(checked).toLowerCase() === "true") {
+        await switchLike.click({ timeout: 5000, force: true });
+        await page.waitForTimeout(500);
+        return true;
+      }
+      if (String(checked).toLowerCase() === "false") return true;
+    } catch {
+      // ignore
+    }
+
+    const cb = switchLike.locator("input[type=\"checkbox\"]").first();
+    try {
+      if (await cb.count()) {
+        const enabled = await cb.isChecked().catch(() => false);
+        if (enabled) {
+          await switchLike.click({ timeout: 5000, force: true });
+          await page.waitForTimeout(500);
+        }
+        return true;
+      }
+    } catch {
+      // ignore
+    }
+
+    await switchLike.click({ timeout: 5000, force: true });
+    await page.waitForTimeout(500);
+    return true;
+  };
+
+  try {
+    const byRole = page.getByRole("switch", { name: /minimized view/i }).first();
+    if (await tryToggleOff(byRole)) return;
+  } catch {
+    // ignore
+  }
+
+  try {
+    const label = page.getByText(/minimized view/i).first();
+    if (await label.isVisible({ timeout: 1500 })) {
+      const container = label
+        .locator("xpath=ancestor-or-self::*[1] | xpath=ancestor::*[2] | xpath=ancestor::*[3]")
+        .first();
+      const near = container.locator(MINIMIZED_VIEW_SWITCH_SELECTOR).first();
+      if (await tryToggleOff(near)) return;
+    }
+  } catch {
+    // ignore
+  }
+
+  const root = page.locator(MINIMIZED_VIEW_SWITCH_SELECTOR).first();
+  await tryToggleOff(root);
 }
 
 async function autoScrollUntilStable(page, { stableRounds = 3, maxRounds = 40 } = {}) {
@@ -56,6 +164,18 @@ async function scrapeOnce(page, { query } = {}) {
     stableRounds: Number(process.env.SCROLL_STABLE_ROUNDS || 3),
     maxRounds: Number(process.env.SCROLL_MAX_ROUNDS || 80)
   });
+
+  // If we still got nothing, one more consent/minimized-view attempt and retry scroll.
+  const initialCount = await page.locator(CARD_SELECTOR).count().catch(() => 0);
+  if (!initialCount) {
+    await clickConsentIfPresent(page);
+    await disableMinimizedViewIfEnabled(page);
+    await page.waitForTimeout(900);
+    await autoScrollUntilStable(page, {
+      stableRounds: Number(process.env.SCROLL_STABLE_ROUNDS || 3),
+      maxRounds: Number(process.env.SCROLL_MAX_ROUNDS || 80)
+    });
+  }
 
   const items = await page.$$eval(
     CARD_SELECTOR,
@@ -118,12 +238,19 @@ async function main() {
 
   await page.goto(TARGET_URL, { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(1500);
+  await clickConsentIfPresent(page);
+  await disableMinimizedViewIfEnabled(page);
+  await page.waitForTimeout(800);
 
   // Full snapshot: scrape without filtering query.
   // The website UI will filter locally for whatever the user searches.
   const all = await scrapeOnce(page);
 
   await browser.close();
+
+  if (!all.length) {
+    throw new Error("Scrape returned 0 items. Site may be blocking the runner, or selectors need updating.");
+  }
 
   const payload = { generatedAt: new Date().toISOString(), items: all };
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
